@@ -242,8 +242,8 @@
 
 </div>
 
-<script>
 
+<script>
 /* ============================================
    SUPABASE SOZLAMALARI
    ============================================ */
@@ -254,271 +254,497 @@ const SUPABASE_URL =
 const SUPABASE_KEY =
     "sb_publishable_fTxkT_gPRuZzk1Drnv1pCg_K0Isf9wM";
 
-const supabaseClient =
-    window.supabase.createClient(
-        SUPABASE_URL,
-        SUPABASE_KEY
-    );
+const supabaseClient = window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+);
 
+let currentPage = "home";
 
 /* ============================================
-   BAZANI TEKSHIRISH
+   YORDAMCHI FUNKSIYALAR
+   ============================================ */
+
+function byId(id) {
+    return document.getElementById(id);
+}
+
+function safe(value) {
+    return String(value ?? "—").replace(/[&<>"']/g, function (c) {
+        return {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;"
+        }[c];
+    });
+}
+
+function setText(id, value) {
+    const element = byId(id);
+    if (element) element.textContent = value;
+}
+
+function showError(message) {
+    console.error(message);
+
+    const content = byId("pageContent");
+
+    if (content) {
+        content.innerHTML = `
+            <div class="panel">
+                <h3>⚠️ Xatolik</h3>
+                <p>${safe(message)}</p>
+                <button onclick="reloadCurrentPage()">
+                    Qayta yuklash
+                </button>
+            </div>
+        `;
+    }
+}
+
+async function fetchRows(table, columns, orderColumn) {
+    const { data, error } = await supabaseClient
+        .from(table)
+        .select(columns)
+        .order(orderColumn, { ascending: true })
+        .limit(1000);
+
+    if (error) throw error;
+
+    return data || [];
+}
+
+/* ============================================
+   SUPABASE BAZASINI TEKSHIRISH
    ============================================ */
 
 async function testConnection() {
-
-    const status =
-        document.getElementById("connectionStatus");
+    const status = byId("connectionStatus");
 
     try {
+        const { error } = await supabaseClient
+            .from("products")
+            .select("id")
+            .limit(1);
 
-        const { data, error } =
-            await supabaseClient
-                .from("products")
-                .select("id")
-                .limit(1);
+        if (error) throw error;
 
-        if (error) {
-            throw error;
+        if (status) {
+            status.textContent = "✅ Supabase muvaffaqiyatli ulandi";
+            status.classList.remove("error");
         }
-
-        status.innerHTML =
-            "✅ Supabase muvaffaqiyatli ulandi";
 
         await loadDashboard();
 
     } catch (error) {
+        console.error("Supabase xatosi:", error);
 
-        console.error(error);
-
-        status.innerHTML =
-            "❌ Supabase ulanishida xato: " +
-            error.message;
-
-        status.classList.add("error");
+        if (status) {
+            status.textContent =
+                "❌ Supabase ulanishida xato: " + error.message;
+            status.classList.add("error");
+        }
     }
 }
 
-
 /* ============================================
-   DASHBOARD MA'LUMOTLARI
+   BOSH SAHIFA / DASHBOARD
    ============================================ */
+
+async function getCount(table) {
+    const { count, error } = await supabaseClient
+        .from(table)
+        .select("id", { count: "exact", head: true });
+
+    if (error) throw error;
+
+    return count ?? 0;
+}
 
 async function loadDashboard() {
+    try {
+        const [customers, products, vehicles, warehouse] =
+            await Promise.all([
+                getCount("customers"),
+                getCount("products"),
+                getCount("vehicles"),
+                supabaseClient
+                    .from("warehouse_stock")
+                    .select("available_racks")
+            ]);
 
-    const customers =
-        await supabaseClient
-            .from("customers")
-            .select("id", { count: "exact", head: true });
+        if (warehouse.error) throw warehouse.error;
 
-    const products =
-        await supabaseClient
-            .from("products")
-            .select("id", { count: "exact", head: true });
+        const totalRacks = (warehouse.data || []).reduce(
+            (sum, row) => sum + Number(row.available_racks || 0),
+            0
+        );
 
-    const vehicles =
-        await supabaseClient
-            .from("vehicles")
-            .select("id", { count: "exact", head: true });
+        setText("customerCount", customers);
+        setText("productCount", products);
+        setText("vehicleCount", vehicles);
+        setText("warehouseCount", totalRacks);
 
-    const warehouse =
-        await supabaseClient
-            .from("warehouse_stock")
-            .select("available_racks");
-
-    document.getElementById("customerCount").innerText =
-        customers.count ?? 0;
-
-    document.getElementById("productCount").innerText =
-        products.count ?? 0;
-
-    document.getElementById("vehicleCount").innerText =
-        vehicles.count ?? 0;
-
-    let totalRacks = 0;
-
-    if (warehouse.data) {
-
-        warehouse.data.forEach(row => {
-
-            totalRacks +=
-                Number(row.available_racks || 0);
-
-        });
-
+    } catch (error) {
+        console.error("Dashboard xatosi:", error);
     }
-
-    document.getElementById("warehouseCount").innerText =
-        totalRacks;
 }
-
 
 /* ============================================
-   SAHIFALAR
+   SAHIFA SARLAVHASI
    ============================================ */
 
-function showPage(page, button) {
+function setPageHeading(title, description) {
+    setText("pageTitle", title);
+    setText("pageDescription", description);
+}
 
-    document
-        .querySelectorAll(".menu")
-        .forEach(btn => btn.classList.remove("active"));
+/* ============================================
+   JADVAL CHIZISH VA QIDIRUV
+   ============================================ */
 
-    button.classList.add("active");
+function renderTable(title, columns, rows, searchableFields) {
+    const content = byId("pageContent");
+    if (!content) return;
 
-    const title =
-        document.getElementById("pageTitle");
+    window.bnbmRows = rows;
+    window.bnbmColumns = columns;
+    window.bnbmSearchFields = searchableFields || columns.map(c => c.key);
 
-    const description =
-        document.getElementById("pageDescription");
+    content.innerHTML = `
+        <div class="panel">
+            <h3>${safe(title)}</h3>
 
-    const content =
-        document.getElementById("pageContent");
+            <input
+                id="bnbmSearch"
+                type="search"
+                placeholder="Ma'lumotlarni qidirish..."
+                style="width:100%;max-width:450px;padding:10px;
+                       margin:10px 0 16px;box-sizing:border-box"
+                oninput="filterCurrentTable()"
+            >
 
+            <p id="bnbmResultCount">
+                Jami: ${rows.length} ta yozuv
+            </p>
 
-    if (page === "home") {
-
-        title.innerText = "Bosh sahifa";
-
-        description.innerText =
-            "BNBM nakladnoy boshqaruv tizimi";
-
-        content.innerHTML = `
-            <div class="panel">
-                <h3>🏠 Bosh sahifa</h3>
-                <p>
-                    Tizim Supabase bazasi bilan ishlayapti.
-                </p>
+            <div style="overflow-x:auto">
+                <table style="width:100%;border-collapse:collapse">
+                    <thead>
+                        <tr>
+                            ${columns.map(col => `
+                                <th style="padding:10px;text-align:left;
+                                           border-bottom:2px solid #ddd">
+                                    ${safe(col.label)}
+                                </th>
+                            `).join("")}
+                        </tr>
+                    </thead>
+                    <tbody id="bnbmTableBody"></tbody>
+                </table>
             </div>
-        `;
+        </div>
+    `;
 
-        loadDashboard();
+    drawTableRows(rows);
+}
 
-    }
+function drawTableRows(rows) {
+    const tbody = byId("bnbmTableBody");
+    if (!tbody) return;
 
+    tbody.innerHTML = rows.map(row => `
+        <tr>
+            ${window.bnbmColumns.map(col => `
+                <td style="padding:10px;border-bottom:1px solid #eee">
+                    ${safe(row[col.key])}
+                </td>
+            `).join("")}
+        </tr>
+    `).join("");
 
-    else if (page === "shipments") {
+    const counter = byId("bnbmResultCount");
 
-        title.innerText = "Yangi nakladnoy";
-
-        description.innerText =
-            "Yangi yuk xatini yaratish";
-
-        content.innerHTML = `
-            <div class="panel">
-                <h3>🧾 Yangi nakladnoy</h3>
-                <p>
-                    Bu bo‘limni keyingi bosqichda
-                    to‘liq funksional qilamiz.
-                </p>
-            </div>
-        `;
-
-    }
-
-
-    else if (page === "warehouse") {
-
-        title.innerText = "Bugungi ombor";
-
-        description.innerText =
-            "Ombordagi mahsulot va qoldiqlar";
-
-        content.innerHTML = `
-            <div class="panel">
-                <h3>🏭 Bugungi ombor</h3>
-                <p>
-                    Ombor ma'lumotlarini shu yerda
-                    ko‘rsatamiz.
-                </p>
-            </div>
-        `;
-
-    }
-
-
-    else if (page === "customers") {
-
-        title.innerText = "Buyurtmachilar";
-
-        description.innerText =
-            "Buyurtmachilar bazasi";
-
-        content.innerHTML = `
-            <div class="panel">
-                <h3>🏢 Buyurtmachilar</h3>
-                <p>
-                    Bazadagi firmalar shu yerda chiqadi.
-                </p>
-            </div>
-        `;
-
-    }
-
-
-    else if (page === "products") {
-
-        title.innerText = "Mahsulotlar";
-
-        description.innerText =
-            "BNBM mahsulotlari";
-
-        content.innerHTML = `
-            <div class="panel">
-                <h3>📦 Mahsulotlar</h3>
-                <p>
-                    47 ta mahsulot bazada mavjud.
-                </p>
-            </div>
-        `;
-
-    }
-
-
-    else if (page === "vehicles") {
-
-        title.innerText = "Mashinalar";
-
-        description.innerText =
-            "Transport vositalari";
-
-        content.innerHTML = `
-            <div class="panel">
-                <h3>🚛 Mashinalar</h3>
-                <p>
-                    Mashinalar bazasi shu yerda.
-                </p>
-            </div>
-        `;
-
-    }
-
-
-    else if (page === "history") {
-
-        title.innerText = "Nakladnoy tarixi";
-
-        description.innerText =
-            "Oldingi yuk xatlari";
-
-        content.innerHTML = `
-            <div class="panel">
-                <h3>📚 Nakladnoy tarixi</h3>
-                <p>
-                    Yaratilgan nakladnoylar shu yerda
-                    saqlanadi.
-                </p>
-            </div>
-        `;
-
+    if (counter) {
+        counter.textContent = `Ko‘rsatilmoqda: ${rows.length} ta yozuv`;
     }
 }
 
+function filterCurrentTable() {
+    const input = byId("bnbmSearch");
+    if (!input) return;
+
+    const query = input.value.trim().toLowerCase();
+
+    const filtered = (window.bnbmRows || []).filter(row =>
+        (window.bnbmSearchFields || []).some(key =>
+            String(row[key] ?? "").toLowerCase().includes(query)
+        )
+    );
+
+    drawTableRows(filtered);
+}
+
+/* ============================================
+   MAHSULOTLAR
+   ============================================ */
+
+async function loadProducts() {
+    const rows = await fetchRows(
+        "products",
+        "id,name,pieces_per_rack,length_m,width_m,calculation_type,active",
+        "name"
+    );
+
+    renderTable("📦 Mahsulotlar", [
+        { key: "id", label: "ID" },
+        { key: "name", label: "Mahsulot nomi" },
+        { key: "pieces_per_rack", label: "Dona / ramka" },
+        { key: "length_m", label: "Uzunlik (m)" },
+        { key: "width_m", label: "En (m)" },
+        { key: "calculation_type", label: "Hisob turi" },
+        { key: "active", label: "Faol" }
+    ], rows, ["name", "calculation_type"]);
+}
+
+/* ============================================
+   BUYURTMACHILAR
+   ============================================ */
+
+async function loadCustomers() {
+    const rows = await fetchRows(
+        "customers",
+        "id,name,phone,address,receiver,stir,active",
+        "name"
+    );
+
+    renderTable("🏢 Buyurtmachilar", [
+        { key: "id", label: "ID" },
+        { key: "name", label: "Firma nomi" },
+        { key: "phone", label: "Telefon" },
+        { key: "address", label: "Manzil" },
+        { key: "receiver", label: "Qabul qiluvchi" },
+        { key: "stir", label: "STIR" },
+        { key: "active", label: "Faol" }
+    ], rows, ["name", "phone", "address", "receiver", "stir"]);
+}
+
+/* ============================================
+   AVTOMOBILLAR
+   ============================================ */
+
+async function loadVehicles() {
+    const rows = await fetchRows(
+        "vehicles",
+        "id,vehicle_number,driver_name,phone,active",
+        "vehicle_number"
+    );
+
+    renderTable("🚛 Avtomobillar", [
+        { key: "id", label: "ID" },
+        { key: "vehicle_number", label: "Davlat raqami" },
+        { key: "driver_name", label: "Haydovchi" },
+        { key: "phone", label: "Telefon" },
+        { key: "active", label: "Faol" }
+    ], rows, ["vehicle_number", "driver_name", "phone"]);
+}
+
+/* ============================================
+   OMBOR QOLDIQLARI
+   ============================================ */
+
+async function loadWarehouse() {
+    const { data, error } = await supabaseClient
+        .from("warehouse_stock")
+        .select(`
+            id,
+            stock_date,
+            zone,
+            row_number,
+            product_id,
+            pieces_per_rack,
+            available_racks,
+            original_racks,
+            scattered_racks,
+            products(name)
+        `)
+        .order("stock_date", { ascending: false })
+        .limit(1000);
+
+    if (error) throw error;
+
+    const rows = (data || []).map(item => ({
+        ...item,
+        product_name: item.products?.name || ("ID " + item.product_id)
+    }));
+
+    renderTable("🏭 Ombor qoldiqlari", [
+        { key: "stock_date", label: "Sana" },
+        { key: "zone", label: "Zona" },
+        { key: "row_number", label: "Qator" },
+        { key: "product_name", label: "Mahsulot" },
+        { key: "pieces_per_rack", label: "Dona / ramka" },
+        { key: "original_racks", label: "Boshlang‘ich ramka" },
+        { key: "scattered_racks", label: "Sochilgan ramka" },
+        { key: "available_racks", label: "Qolgan ramka" }
+    ], rows, ["stock_date", "zone", "product_name"]);
+}
+
+/* ============================================
+   NAKLADNOYLAR RO‘YXATI
+   ============================================ */
+
+async function loadShipments() {
+    const { data, error } = await supabaseClient
+        .from("shipments")
+        .select(`
+            id,
+            shipment_number,
+            requirements,
+            created_at,
+            customers(name),
+            vehicles(vehicle_number,driver_name)
+        `)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+
+    if (error) throw error;
+
+    const rows = (data || []).map(item => ({
+        ...item,
+        customer_name: item.customers?.name || "—",
+        vehicle_info: item.vehicles
+            ? `${item.vehicles.vehicle_number} ${item.vehicles.driver_name || ""}`
+            : "—"
+    }));
+
+    renderTable("🧾 Nakladnoylar", [
+        { key: "shipment_number", label: "Nakladnoy raqami" },
+        { key: "customer_name", label: "Buyurtmachi" },
+        { key: "vehicle_info", label: "Avtomobil / haydovchi" },
+        { key: "requirements", label: "Talablar" },
+        { key: "created_at", label: "Yaratilgan vaqt" }
+    ], rows, ["shipment_number", "customer_name", "vehicle_info"]);
+}
+
+/* ============================================
+   YUKLASH TARIXI
+   ============================================ */
+
+async function loadHistory() {
+    const { data, error } = await supabaseClient
+        .from("shipment_allocations_log")
+        .select(`
+            id,
+            shipment_id,
+            shipment_item_id,
+            warehouse_stock_id,
+            zone,
+            allocated_racks,
+            pieces_per_rack,
+            created_at
+        `)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+
+    if (error) throw error;
+
+    renderTable("📚 Yuklash tarixi", [
+        { key: "created_at", label: "Sana / vaqt" },
+        { key: "shipment_id", label: "Nakladnoy ID" },
+        { key: "shipment_item_id", label: "Mahsulot ID" },
+        { key: "warehouse_stock_id", label: "Ombor yozuvi ID" },
+        { key: "zone", label: "Zona" },
+        { key: "allocated_racks", label: "Yuklangan ramka" },
+        { key: "pieces_per_rack", label: "Dona / ramka" }
+    ], data || [], ["shipment_id", "zone"]);
+}
+
+/* ============================================
+   SAHIFALAR O‘RTASIDA O‘TISH
+   ============================================ */
+
+async function showPage(page, button) {
+    currentPage = page;
+
+    document.querySelectorAll(".menu").forEach(btn => {
+        btn.classList.remove("active");
+    });
+
+    if (button) button.classList.add("active");
+
+    try {
+        switch (page) {
+            case "home":
+                setPageHeading(
+                    "Bosh sahifa",
+                    "BNBM nakladnoy boshqaruv tizimi"
+                );
+
+                const content = byId("pageContent");
+                if (content) {
+                    content.innerHTML = `
+                        <div class="panel">
+                            <h3>🏠 Bosh sahifa</h3>
+                            <p>Ma'lumotlar Supabase bazasidan olinadi.</p>
+                        </div>
+                    `;
+                }
+
+                await loadDashboard();
+                break;
+
+            case "products":
+                setPageHeading("Mahsulotlar", "BNBM mahsulotlari");
+                await loadProducts();
+                break;
+
+            case "customers":
+                setPageHeading("Buyurtmachilar", "Buyurtmachilar bazasi");
+                await loadCustomers();
+                break;
+
+            case "vehicles":
+                setPageHeading("Mashinalar", "Transport vositalari");
+                await loadVehicles();
+                break;
+
+            case "warehouse":
+                setPageHeading("Bugungi ombor", "Ombor qoldiqlari");
+                await loadWarehouse();
+                break;
+
+            case "shipments":
+                setPageHeading("Nakladnoylar", "Yuk xatlari ro‘yxati");
+                await loadShipments();
+                break;
+
+            case "history":
+                setPageHeading("Nakladnoy tarixi", "Yuklash operatsiyalari");
+                await loadHistory();
+                break;
+
+            default:
+                showError("Noma'lum sahifa: " + page);
+        }
+    } catch (error) {
+        showError(error.message || "Ma'lumotlarni yuklashda xatolik.");
+    }
+}
+
+function reloadCurrentPage() {
+    showPage(currentPage);
+}
 
 /* ============================================
    START
    ============================================ */
 
-testConnection();
+document.addEventListener("DOMContentLoaded", function () {
+    testConnection();
+});
 
 </script>
 
