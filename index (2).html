@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BNBM NAKLADNOY</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f3f6fb;color:#172033;font-size:14px}
+header{background:#fff;padding:14px 24px;border-bottom:1px solid #ddd;display:flex;gap:14px;align-items:baseline}
+header h1{margin:0;color:#174a83;font-size:22px}header span{color:#68758a}
+.layout{display:flex;min-height:calc(100vh - 56px)}
+nav{width:210px;background:#fff;padding:12px;border-right:1px solid #e1e6ef;flex:none}
+nav button{width:100%;padding:11px;margin-bottom:6px;border:0;border-radius:8px;text-align:left;background:#f4f6fa;cursor:pointer;font-size:14px}
+nav button:hover,nav button.on{background:#dceaff;font-weight:bold}
+main{flex:1;padding:22px;min-width:0}
+h2{margin-top:0}
+.panel,.card{background:#fff;border:1px solid #e1e6ef;border-radius:12px;padding:18px;margin-bottom:16px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.card b{font-size:26px;display:block;color:#174a83}
+label{display:block;font-weight:bold;margin:12px 0 5px}
+input,textarea,select{width:100%;padding:9px;border:1px solid #ccd3df;border-radius:7px;font-size:14px;background:#fff}
+textarea{min-height:60px}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 14px}
+.span{grid-column:1/-1}
+.btn{border:0;padding:9px 15px;border-radius:7px;cursor:pointer;margin:12px 8px 0 0;font-size:14px;background:#e4ecf7;color:#174a83}
+.btn.p{background:#1769aa;color:#fff}.btn.d{background:#fde8e8;color:#b42318}.btn.s{margin:0 4px 0 0;padding:5px 9px;font-size:12px}
+.note{color:#68758a;font-size:13px}.ok{color:#18794e}.err{color:#b42318}
+table.t{width:100%;border-collapse:collapse}
+.t th,.t td{border-bottom:1px solid #e8ecf3;padding:8px;text-align:left;vertical-align:top}
+.t th{background:#f4f6fa}.wrap{overflow-x:auto}
+.items td{padding:3px}.items input{padding:7px}
+.tag{padding:2px 8px;border-radius:10px;font-size:12px;background:#eef1f6}
+.tag.confirmed{background:#dff5e8;color:#18794e}.tag.cancelled{background:#fde8e8;color:#b42318}.tag.draft{background:#fff3d6;color:#8a5a00}
+.low{background:#fff3d6}
+#auth{position:fixed;inset:0;background:#f3f6fb;display:flex;align-items:center;justify-content:center;z-index:9}#auth .box{background:#fff;padding:26px;border-radius:12px;width:340px;border:1px solid #e1e6ef}
+@media(max-width:800px){.layout{display:block}nav{width:100%}main{padding:12px}.cards,.grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div id="auth"><div class="box"><h2 style="margin:0 0 4px;color:#174a83">BNBM NAKLADNOY</h2><p class="note">Tizimga kirish</p>
+<label>Email</label><input id="aE" type="email" autocomplete="username"><label>Parol</label><input id="aP" type="password" autocomplete="current-password">
+<button class="btn p" id="aIn">Kirish</button><button class="btn" id="aUp">Ro'yxatdan o'tish</button><p id="amsg" class="note"></p></div></div>
+<header><h1>BNBM NAKLADNOY</h1><span>Yuk xatlari va ombor tizimi</span></header>
+<div class="layout">
+<nav id="nav">
+  <button data-p="home">🏠 Bosh sahifa</button>
+  <button data-p="ship">🧾 Yangi yuk xati</button>
+  <button data-p="stock">🏬 Ombor</button>
+  <button data-p="customers">🏢 Mijozlar</button>
+  <button data-p="products">📦 Mahsulotlar</button>
+  <button data-p="vehicles">🚛 Transport</button>
+  <button data-p="history">📚 Yuk xatlari tarixi</button>
+  <button data-p="reports">📊 Hisobotlar</button>
+  <button data-p="users">⚙ Foydalanuvchilar</button>
+  <p class="note" id="who"></p><button class="btn d s" id="out">Chiqish</button>
+</nav>
+<main><h2 id="pageTitle"></h2><div id="pageContent"></div></main>
+</div>
+
+<script>
+const db=window.supabase.createClient("https://megijiehhzynvddpeexk.supabase.co","sb_publishable_fTxkT_gPRuZzk1Drnv1pCg_K0Isf9wM");
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num=v=>parseFloat(v)||0;
+const ST={draft:"Qoralama",confirmed:"Tasdiqlangan",cancelled:"Bekor qilingan"};
+
+/* Mavjud jadvallaringizdagi ustun nomlari: har bir kalit uchun birinchi topilgani ishlatiladi.
+   Bazangizda boshqacha nom bo'lsa, shu ro'yxatga qo'shing. */
+const K={name:["name","company_name","customer_name","firm_name","company","title","legal_name","name_uz"],
+ phone:["phone","tel","telefon"],stir:["stir","inn","tin"],address:["address","manzil"],city:["city","region","hudud","shahar"],
+ contact:["contact","contact_person","responsible"],plate:["plate","number","vehicle_number","plate_number"],
+ trailer:["trailer","trailer_number","trailer_plate"],dname:["driver_name","driver"],dphone:["driver_phone","phone"],
+ code:["code","product_code","kod"],size:["size","dimensions","olcham"],unit:["unit","uom"],pp:["per_pallet","pallet_qty","qty_per_pallet"]};
+const g=(o,k)=>{for(const x of K[k]){if(o[x]!=null&&String(o[x]).trim()!=="")return o[x]}return ""};
+/* Yangi yozuv qo'shish formalari (ustun nomlari bazangizga mos bo'lishi kerak) */
+const CFG={
+ customers:{t:"Mijozlar",f:[["name","Firma nomi"],["stir","STIR"],["phone","Telefon"],["address","Manzil"],["contact","Mas'ul shaxs"]]},
+ products:{t:"Mahsulotlar",f:[["code","Kod"],["name","Nomi"],["size","O'lchami"],["unit","O'lchov birligi"],["per_pallet","Bitta poddondagi miqdor"]]},
+ vehicles:{t:"Transport",f:[["plate","Davlat raqami"],["trailer","Tirkama raqami"],["driver_name","Haydovchi F.I.Sh."],["driver_phone","Haydovchi telefoni"]]}};
+
+const cache={customers:[],products:[],vehicles:[]};
+async function load(t){
+  let r=await db.from(t).select("*").order("id",{ascending:false}).limit(2000);
+  if(r.error)r=await db.from(t).select("*").limit(2000);
+  if(r.error)throw r.error;
+  return cache[t]=r.data||[];
+}
+const dl=(id,arr)=>`<datalist id="${id}">${[...new Set(arr.filter(Boolean))].sort().map(v=>`<option value="${esc(v)}">`).join("")}</datalist>`;
+
+function showPage(p,arg){
+  if(!PAGES[ROLE]?.includes(p))p="home";
+  document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.p===p));
+  const T={home:"Bosh sahifa",ship:"Yangi yuk xati",stock:"Ombor",history:"Yuk xatlari tarixi",reports:"Hisobotlar",users:"Foydalanuvchilar va audit"};
+  $("pageTitle").textContent=T[p]||CFG[p].t;
+  const c=$("pageContent");c.innerHTML="";
+  ({home,ship,stock,history:hist,reports,users})[p]?.(c,arg)||(CFG[p]&&crud(c,p));
+}
+
+/* ---------- Bosh sahifa ---------- */
+async function home(c){
+  c.innerHTML=`<div class="panel"><input id="q" placeholder="🔎 Tezkor qidiruv: hujjat raqami, mijoz yoki mashina raqami (Enter)"></div>
+  <div class="cards" id="cards"></div><div class="panel" id="low"></div><div class="panel" id="last">Yuklanmoqda...</div>
+  <p class="note">Qayta ishlash uchun <b>schema.sql</b> Supabase'da bajarilgan bo'lishi kerak.</p>`;
+  $("q").onkeydown=e=>{if(e.key==="Enter")showPage("history",e.target.value.trim())};
+  const today=new Date().toLocaleDateString("en-CA");
+  const [s,st,pr]=await Promise.all([
+    db.from("shipments").select("*").order("id",{ascending:false}).limit(500),
+    db.from("warehouse_stock").select("*"),load("products").catch(()=>[])]);
+  if(s.error){$("last").innerHTML='<span class="err">Xato: '+esc(s.error.message)+' — schema.sql ni bajaring.</span>';return}
+  const d=s.data,n=f=>d.filter(f).length;
+  $("cards").innerHTML=[["Bugungi yuk xatlari",n(x=>x.ship_date===today)],["Jarayonda (qoralama)",n(x=>x.status==="draft")],
+   ["Tasdiqlangan",n(x=>x.status==="confirmed")],["Bekor qilingan",n(x=>x.status==="cancelled")]]
+   .map(([l,v])=>`<div class="card">${l}<b>${v}</b></div>`).join("");
+  const low=(st.data||[]).filter(x=>x.min_qty>0&&x.qty<=x.min_qty);
+  $("low").innerHTML=low.length?"<b>⚠ Qoldiq kam:</b> "+low.map(x=>esc(prodName(pr,x.product_id))+" ("+x.qty+")").join(", "):'<span class="ok">Qoldig\'i kam mahsulot yo\'q</span>';
+  $("last").innerHTML="<b>Oxirgi yuk xatlari</b>"+histTable(d.slice(0,6),false);
+}
+const prodName=(pr,id)=>{const p=pr.find(x=>String(x.id)===String(id));return p?g(p,"name"):"#"+id};
+
+/* ---------- Mijozlar / Mahsulotlar / Transport ---------- */
+async function crud(c,t){
+  const cfg=CFG[t];
+  c.innerHTML=`<div class="panel"><h3>Yangi qo'shish</h3><div class="grid">${cfg.f.map(([k,l])=>`<div><label>${l}</label><input id="f_${k}"></div>`).join("")}</div>
+  <button class="btn p" id="add">Saqlash</button><span id="msg"></span></div>
+  <div class="panel"><input id="flt" placeholder="🔎 Qidiruv"><p class="note" id="cols"></p><div class="wrap" id="list">Yuklanmoqda...</div></div>`;
+  if(!W())c.firstElementChild.style.display="none";
+  $("add").onclick=async()=>{
+    const row={};cfg.f.forEach(([k])=>{const v=$("f_"+k).value.trim();if(v)row[k]=v});
+    if(!Object.keys(row).length){$("msg").textContent="Kamida bitta maydonni to'ldiring";return}
+    const {error}=await db.from(t).insert(row);
+    if(error)$("msg").innerHTML=`<span class="err"> Xato: ${esc(error.message)}. Ustun nomlarini faylning CFG qismida bazaga moslang.</span>`;
+    else crud(c,t);
+  };
+  try{
+    const rows=await load(t);
+    if(!rows.length){$("list").innerHTML='<p class="note">Hali ma\'lumot yo\'q.</p>';return}
+    const cols=Object.keys(rows[0]).filter(k=>k!=="created_at");
+    $("cols").textContent="Bazadagi ustunlar: "+cols.join(", ");
+    const draw=q=>{
+      const r=rows.filter(x=>JSON.stringify(x).toLowerCase().includes(q.toLowerCase())).slice(0,300);
+      $("list").innerHTML=`<table class="t"><tr>${cols.map(k=>`<th>${esc(k)}</th>`).join("")}<th></th></tr>${r.map(x=>
+       `<tr>${cols.map(k=>`<td>${esc(x[k])}</td>`).join("")}<td>${W()?`<button class="btn d s" data-id="${esc(x.id)}">O'chirish</button>`:""}</td></tr>`).join("")}</table>`;
+      $("list").querySelectorAll("[data-id]").forEach(b=>b.onclick=async()=>{
+        if(!confirm("O'chirilsinmi?"))return;
+        const {error}=await db.from(t).delete().eq("id",b.dataset.id);
+        error?alert("Xato: "+error.message):crud(c,t);
+      });
+    };
+    draw("");$("flt").oninput=e=>draw(e.target.value);
+  }catch(e){$("list").innerHTML='<span class="err">'+esc(e.message)+'</span>'}
+}
+
+/* ---------- Yangi yuk xati ---------- */
+const DRAFT="bnbm_draft";
+const itemRow=(i={})=>`<tr data-pid="${esc(i.product_id||"")}" data-pp="${esc(i.pp||"")}">
+ <td><input class="i-name" list="prodL" placeholder="Mahsulot" value="${esc(i.product_name)}"></td>
+ <td style="width:90px"><input class="i-code" placeholder="Kod" value="${esc(i.code)}"></td>
+ <td style="width:130px"><input class="i-size" placeholder="O'lcham" value="${esc(i.size)}"></td>
+ <td style="width:90px"><input class="i-qty" type="number" step="any" placeholder="Miqdor" value="${esc(i.qty)}"></td>
+ <td style="width:80px"><input class="i-unit" placeholder="Birlik" value="${esc(i.unit)}"></td>
+ <td style="width:60px;text-align:center"><input class="i-wp" type="checkbox" ${i.with_pallet?"checked":""}></td>
+ <td style="width:60px"><input class="i-pal" readonly value="${esc(i.pallets||0)}"></td>
+ <td><input class="i-note" placeholder="Izoh" value="${esc(i.note)}"></td>
+ <td><button type="button" class="btn d s" onclick="this.closest('tr').remove();recalc()">✕</button></td></tr>`;
+
+async function ship(c){
+  const F=[["shipDate","Sana","date"],["dispatch","Yuk yuborish joyi"],["customer","Firma nomi","","custL"],["receiver","Yukni qabul qiluvchi"],
+   ["stir","STIR"],["phone","Telefon"],["address","Yetkazib berish manzili"],["city","Shahar / hudud"],
+   ["plate","Avtomobil raqami","","vehL"],["trailer","Tirkama raqami"],["dname","Haydovchi F.I.Sh."],["dphone","Haydovchi telefoni"]];
+  c.innerHTML=`<div class="panel"><div class="grid">${F.map(([id,l,t,li])=>`<div><label>${l}</label><input id="${id}" ${t?`type="${t}"`:""} ${li?`list="${li}" autocomplete="off"`:""}></div>`).join("")}</div>
+  <label>Yuklar</label><div class="wrap"><table class="items" style="width:100%;min-width:760px">
+  <tr class="note"><td>Mahsulot</td><td>Kod</td><td>O'lcham</td><td>Miqdor</td><td>Birlik</td><td>Poddon</td><td>Poddon soni</td><td>Izoh</td><td></td></tr>
+  <tbody id="items"></tbody></table></div>
+  <button class="btn" id="addI">+ Mahsulot qo'shish</button> <b id="tot"></b>
+  <label>Talablar va maxsus ko'rsatmalar</label><textarea id="instr"></textarea>
+  <div><button class="btn" id="bPrint">Chop etish (saqlamasdan)</button><button class="btn" id="bDraft">Qoralama saqlash</button>
+  <button class="btn p" id="bConf">Saqlash va tasdiqlash</button><button class="btn d" id="bClr">Tozalash</button></div>
+  <p id="msg" class="note"></p></div><span id="dls"></span>`;
+  $("dls").innerHTML=dl("custL",[]);
+  try{
+    const [cu,pr,ve]=await Promise.all([load("customers"),load("products"),load("vehicles")]);
+    $("dls").innerHTML=dl("custL",cu.map(x=>g(x,"name")))+dl("prodL",pr.map(x=>g(x,"name")))+dl("vehL",ve.map(x=>g(x,"plate")));
+  }catch(e){$("msg").innerHTML='<span class="err">Bazadan yuklab bo\'lmadi: '+esc(e.message)+'</span>'}
+  $("addI").onclick=()=>{$("items").insertAdjacentHTML("beforeend",itemRow())};
+  $("customer").onchange=()=>{const r=cache.customers.find(x=>g(x,"name")===$("customer").value.trim());if(!r)return;
+    for(const [id,k] of [["stir","stir"],["phone","phone"],["address","address"],["city","city"],["receiver","contact"]])if(g(r,k))$(id).value=g(r,k)};
+  $("plate").onchange=()=>{const r=cache.vehicles.find(x=>g(x,"plate")===$("plate").value.trim());if(!r)return;
+    for(const [id,k] of [["trailer","trailer"],["dname","dname"],["dphone","dphone"]])if(g(r,k))$(id).value=g(r,k)};
+  $("items").onchange=e=>{
+    if(e.target.classList.contains("i-name")){
+      const tr=e.target.closest("tr"),p=cache.products.find(x=>g(x,"name")===e.target.value.trim());
+      if(p){tr.dataset.pid=p.id;tr.dataset.pp=g(p,"pp");
+        tr.querySelector(".i-code").value=g(p,"code");tr.querySelector(".i-size").value=g(p,"size");tr.querySelector(".i-unit").value=g(p,"unit");}
+      else{tr.dataset.pid="";tr.dataset.pp=""}
+    }recalc();
+  };
+  c.oninput=()=>{recalc();localStorage.setItem(DRAFT,JSON.stringify(getShip()))};
+  $("bClr").onclick=()=>{localStorage.removeItem(DRAFT);ship(c)};
+  $("bPrint").onclick=()=>printDoc(getShip());
+  $("bDraft").onclick=()=>saveShip(false);$("bConf").onclick=()=>saveShip(true);
+  const d=JSON.parse(localStorage.getItem(DRAFT)||"null");
+  if(d){setShip(d);$("msg").textContent="Qoralama tiklandi."}else{$("shipDate").value=new Date().toLocaleDateString("en-CA");$("items").innerHTML=itemRow()}
+  recalc();
+}
+function recalc(){
+  let q=0,p=0;
+  document.querySelectorAll("#items tr").forEach(tr=>{
+    const qty=num(tr.querySelector(".i-qty").value),pp=num(tr.dataset.pp),wp=tr.querySelector(".i-wp").checked;
+    const pal=wp&&pp>0?Math.ceil(qty/pp):0;tr.querySelector(".i-pal").value=pal;q+=qty;p+=pal;
+  });
+  if($("tot"))$("tot").textContent=`Jami miqdor: ${+q.toFixed(3)} | Poddonlar: ${p}`;
+}
+const MAP={dispatch_place:"dispatch",customer:"customer",receiver:"receiver",customer_stir:"stir",customer_phone:"phone",address:"address",city:"city",
+ vehicle_plate:"plate",trailer:"trailer",driver_name:"dname",driver_phone:"dphone",ship_date:"shipDate",instructions:"instr"};
+function getShip(){
+  const s={};for(const [k,id] of Object.entries(MAP))s[k]=$(id).value.trim();
+  s.items=[...document.querySelectorAll("#items tr")].map(tr=>({
+    product_id:tr.dataset.pid?Number(tr.dataset.pid):null,pp:tr.dataset.pp,product_name:tr.querySelector(".i-name").value.trim(),
+    code:tr.querySelector(".i-code").value.trim(),size:tr.querySelector(".i-size").value.trim(),unit:tr.querySelector(".i-unit").value.trim(),
+    qty:num(tr.querySelector(".i-qty").value),with_pallet:tr.querySelector(".i-wp").checked,pallets:num(tr.querySelector(".i-pal").value),
+    note:tr.querySelector(".i-note").value.trim()})).filter(i=>i.product_name||i.qty);
+  return s;
+}
+function setShip(s){
+  for(const [k,id] of Object.entries(MAP))$(id).value=s[k]||"";
+  if(!$("shipDate").value)$("shipDate").value=new Date().toLocaleDateString("en-CA");
+  const its=(s.items||s.shipment_items||[]);
+  $("items").innerHTML=(its.length?its:[{}]).map(itemRow).join("");
+}
+async function saveShip(confirmNow){
+  const s=getShip(),m=$("msg");
+  if(!s.customer)return m.innerHTML='<span class="err">Firma nomini kiriting</span>';
+  if(!s.items.length||s.items.some(i=>!i.product_name||i.qty<=0))return m.innerHTML='<span class="err">Har bir qatorda mahsulot va miqdor (0 dan katta) bo\'lishi kerak</span>';
+  if(confirmNow&&s.items.some(i=>!i.product_id)&&!confirm("Ba'zi mahsulotlar ro'yxatdan tanlanmagan — ular ombordan ayirilmaydi. Davom etasizmi?"))return;
+  m.textContent="Saqlanmoqda...";
+  const head={...s};delete head.items;
+  const r=await db.from("shipments").insert(head).select().single();
+  if(r.error)return m.innerHTML='<span class="err">Saqlanmadi: '+esc(r.error.message)+'</span>';
+  const rows=s.items.map(({pp,...i})=>({...i,shipment_id:r.data.id}));
+  const ri=await db.from("shipment_items").insert(rows);
+  if(ri.error){await db.from("shipments").delete().eq("id",r.data.id);return m.innerHTML='<span class="err">Mahsulotlar saqlanmadi, hujjat bekor qilindi: '+esc(ri.error.message)+'</span>'}
+  if(confirmNow){
+    const rc=await db.rpc("confirm_shipment",{p_id:r.data.id});
+    if(rc.error)return m.innerHTML=`<span class="err">${esc(r.data.doc_no)} qoralama sifatida saqlandi, lekin tasdiqlanmadi: ${esc(rc.error.message)}</span>`;
+  }
+  localStorage.removeItem(DRAFT);
+  m.innerHTML=`<span class="ok">✅ ${esc(r.data.doc_no)} ${confirmNow?"tasdiqlandi":"qoralama sifatida saqlandi"}.</span>`;
+  printDoc({...r.data,items:s.items});
+}
+
+function printDoc(s){
+  const items=s.items||s.shipment_items||[];
+  const R=[["Sana",s.ship_date],["Firma",s.customer],["Qabul qiluvchi",s.receiver],["STIR",s.customer_stir],["Telefon",s.customer_phone],
+   ["Manzil",[s.address,s.city].filter(Boolean).join(", ")],["Yuk yuborish joyi",s.dispatch_place],
+   ["Avtomobil",[s.vehicle_plate,s.trailer&&"tirkama "+s.trailer].filter(Boolean).join(", ")],["Haydovchi",[s.driver_name,s.driver_phone].filter(Boolean).join(", ")]]
+   .filter(x=>x[1]).map(([l,v])=>`<tr><th>${esc(l)}</th><td>${esc(v)}</td></tr>`).join("");
+  const tq=items.reduce((a,i)=>a+num(i.qty),0),tp=items.reduce((a,i)=>a+num(i.pallets),0);
+  const w=window.open("","_blank");
+  if(!w)return alert("Pop-up bloklangan. Brauzerda ruxsat bering.");
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(s.doc_no||"Yuk xati")}</title>
+<style>@page{size:A5 landscape;margin:7mm}body{font-family:Arial,sans-serif;font-size:11px}h2{text-align:center;margin:2px 0 6px}
+table{width:100%;border-collapse:collapse;margin-bottom:6px}th,td{border:1px solid #333;padding:3px 6px;text-align:left}.k th{width:24%}</style></head><body>
+<h2>BNBM — YUK XATI ${s.doc_no?"№ "+esc(s.doc_no):""}</h2><table class="k">${R}</table>
+<table><tr><th>№</th><th>Mahsulot</th><th>Kod</th><th>O'lcham</th><th>Miqdor</th><th>Birlik</th><th>Poddon</th><th>Izoh</th></tr>
+${items.map((i,n)=>`<tr><td>${n+1}</td><td>${esc(i.product_name)}</td><td>${esc(i.code)}</td><td>${esc(i.size)}</td><td>${esc(i.qty)}</td><td>${esc(i.unit)}</td><td>${i.with_pallet?esc(i.pallets):"-"}</td><td>${esc(i.note)}</td></tr>`).join("")}
+<tr><th colspan="4">Jami</th><th>${+tq.toFixed(3)}</th><th></th><th>${tp}</th><th></th></tr></table>
+${s.instructions?`<p><b>Talablar:</b> ${esc(s.instructions)}</p>`:""}
+<p>Haydovchi: ____________ &nbsp; Qabul qiluvchi: ____________ &nbsp; Yuk yuboruvchi: ____________</p>
+<script>onload=()=>print()<\/script></body></html>`);
+  w.document.close();
+}
+
+/* ---------- Ombor ---------- */
+async function stock(c){
+  c.innerHTML="Yuklanmoqda...";
+  try{
+    const [pr,st,mv]=await Promise.all([load("products"),db.from("warehouse_stock").select("*"),
+      db.from("stock_movements").select("*").order("id",{ascending:false}).limit(100)]);
+    if(st.error)throw st.error;
+    const by=Object.fromEntries(st.data.map(x=>[String(x.product_id),x]));
+    c.innerHTML=`<div class="panel"><h3>Omborga kirim</h3><div class="grid">
+     <div><label>Mahsulot</label><select id="kp">${pr.map(p=>`<option value="${esc(p.id)}">${esc(g(p,"name"))} ${esc(g(p,"size"))}</option>`).join("")}</select></div>
+     <div><label>Miqdor</label><input id="kq" type="number" step="any"></div><div><label>Izoh / hujjat</label><input id="kn"></div></div>
+     <button class="btn p" id="kb">Kirim qilish</button><span id="km"></span></div>
+     <div class="panel"><h3>Joriy qoldiq</h3><div class="wrap"><table class="t"><tr><th>Mahsulot</th><th>O'lcham</th><th>Qoldiq</th><th>Minimal</th><th></th></tr>${pr.map(p=>{
+       const s=by[String(p.id)],q=s?num(s.qty):0,mn=s?num(s.min_qty):0;
+       return `<tr class="${mn>0&&q<=mn?"low":""}"><td>${esc(g(p,"name"))}</td><td>${esc(g(p,"size"))}</td><td><b>${q}</b> ${esc(g(p,"unit"))}</td>
+       <td><input style="width:80px" value="${mn}" onchange="setMin(${Number(p.id)},this.value)"></td><td>${mn>0&&q<=mn?"⚠ kam":""}</td></tr>`}).join("")}</table></div></div>
+     <div class="panel"><h3>Kirim-chiqim tarixi (oxirgi 100)</h3><div class="wrap"><table class="t"><tr><th>Sana</th><th>Mahsulot</th><th>Turi</th><th>Miqdor</th><th>Izoh</th></tr>${(mv.data||[]).map(m=>
+       `<tr><td>${esc(new Date(m.created_at).toLocaleString("uz"))}</td><td>${esc(prodName(pr,m.product_id))}</td><td>${m.kind==="in"?"Kirim":"Chiqim"}</td><td>${esc(m.qty)}</td><td>${esc(m.note)}</td></tr>`).join("")}</table></div></div>`;
+    if(ROLE==="viewer")c.firstElementChild.style.display="none";
+    $("kb").onclick=async()=>{
+      const q=num($("kq").value);if(q<=0)return $("km").innerHTML=' <span class="err">Miqdorni kiriting</span>';
+      const {error}=await db.rpc("add_stock",{p_product:Number($("kp").value),p_qty:q,p_note:$("kn").value.trim()||null});
+      error?$("km").innerHTML=' <span class="err">'+esc(error.message)+'</span>':stock(c);
+    };
+  }catch(e){c.innerHTML='<div class="panel err">Xato: '+esc(e.message)+' — schema.sql ni bajaring.</div>'}
+}
+async function setMin(id,v){
+  const {error}=await db.from("warehouse_stock").upsert({product_id:id,min_qty:num(v)},{onConflict:"product_id"});
+  if(error)alert(error.message);
+}
+
+/* ---------- Tarix ---------- */
+const histTable=(d,act=true)=>d.length?`<div class="wrap"><table class="t"><tr><th>Raqam</th><th>Sana</th><th>Firma</th><th>Mashina</th><th>Holat</th>${act?"<th></th>":""}</tr>${d.map(r=>
+ `<tr><td><b>${esc(r.doc_no)}</b></td><td>${esc(r.ship_date)}</td><td>${esc(r.customer)}</td><td>${esc(r.vehicle_plate)} ${esc(r.driver_name)}</td><td><span class="tag ${esc(r.status)}">${ST[r.status]||esc(r.status)}</span></td>
+ ${act?`<td style="white-space:nowrap"><button class="btn s" data-a="print" data-id="${r.id}">Chop</button><button class="btn s" data-a="copy" data-id="${r.id}">Nusxa</button>
+ ${r.status==="draft"?`<button class="btn p s" data-a="conf" data-id="${r.id}">Tasdiqlash</button>`:""}${r.status!=="cancelled"?`<button class="btn d s" data-a="cancel" data-id="${r.id}">Bekor</button>`:""}</td>`:""}</tr>`).join("")}</table></div>`:'<p class="note">Hali yuk xati yo\'q.</p>';
+
+async function hist(c,q=""){
+  c.innerHTML=`<div class="panel"><div class="grid">
+   <div><label>Raqam / firma / mashina</label><input id="h_q" value="${esc(q)}"></div><div><label>Mahsulot</label><input id="h_p"></div>
+   <div><label>Holat</label><select id="h_s"><option value="">Barchasi</option>${Object.entries(ST).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></div>
+   <div><label>Sanadan</label><input id="h_a" type="date"></div><div><label>Sanagacha</label><input id="h_b" type="date"></div></div>
+   <button class="btn" id="h_csv">⬇ CSV eksport</button><span id="hm"></span></div><div class="panel" id="hl">Yuklanmoqda...</div>`;
+  const r=await db.from("shipments").select("*, shipment_items(*)").order("id",{ascending:false}).limit(1000);
+  if(r.error){$("hl").innerHTML='<span class="err">Xato: '+esc(r.error.message)+'</span>';return}
+  let cur=[];
+  const draw=()=>{
+    const t=$("h_q").value.toLowerCase(),p=$("h_p").value.toLowerCase(),s=$("h_s").value,a=$("h_a").value,b=$("h_b").value;
+    cur=r.data.filter(x=>(!t||[x.doc_no,x.customer,x.vehicle_plate,x.driver_name].join(" ").toLowerCase().includes(t))
+     &&(!p||x.shipment_items.some(i=>(i.product_name||"").toLowerCase().includes(p)))&&(!s||x.status===s)&&(!a||x.ship_date>=a)&&(!b||x.ship_date<=b)).slice(0,300);
+    $("hl").innerHTML=histTable(cur);
+    $("hl").querySelectorAll("[data-a]").forEach(el=>{if(!ACTS[ROLE].includes(el.dataset.a))el.remove()});
+    $("hl").querySelectorAll("[data-a]").forEach(el=>el.onclick=()=>act(el.dataset.a,cur.find(x=>String(x.id)===el.dataset.id),c,q));
+  };
+  ["h_q","h_p","h_s","h_a","h_b"].forEach(id=>$(id).oninput=draw);draw();
+  $("h_csv").onclick=()=>{
+    const H=["doc_no","ship_date","status","customer","vehicle_plate","driver_name","product","qty","unit","pallets"];
+    const L=[H.join(",")];cur.forEach(x=>(x.shipment_items.length?x.shipment_items:[{}]).forEach(i=>
+      L.push([x.doc_no,x.ship_date,x.status,x.customer,x.vehicle_plate,x.driver_name,i.product_name,i.qty,i.unit,i.pallets].map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(","))));
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+L.join("\n")],{type:"text/csv"}));a.download="yuk_xatlari.csv";a.click();
+  };
+}
+async function act(a,r,c,q){
+  if(a==="print")return printDoc({...r,items:r.shipment_items});
+  if(a==="copy"){const d={...r,items:r.shipment_items.map(i=>({...i}))};localStorage.setItem(DRAFT,JSON.stringify(d));return showPage("ship")}
+  const fn=a==="conf"?"confirm_shipment":"cancel_shipment";
+  if(!confirm(a==="conf"?"Tasdiqlansinmi? Mahsulot ombordan ayiriladi.":"Hujjat bekor qilinsinmi? Tasdiqlangan bo'lsa, qoldiq qaytariladi."))return;
+  const {error}=await db.rpc(fn,{p_id:r.id});
+  error?alert("Xato: "+error.message):hist(c,q);
+}
+
+/* ---------- Kirish va rollar ---------- */
+let ROLE=null,ME=null;
+const PAGES={admin:["home","ship","stock","customers","products","vehicles","history","reports","users"],
+ manager:["home","ship","customers","products","vehicles","history","reports"],
+ storekeeper:["home","stock","products","history"],viewer:["home","stock","history","reports"]};
+const ACTS={admin:["print","copy","conf","cancel"],manager:["print","copy","conf","cancel"],storekeeper:["print","conf"],viewer:["print"]};
+const RN={admin:"Admin",manager:"Menejer",storekeeper:"Omborchi",viewer:"Kuzatuvchi",pending:"Kutilmoqda"};
+const W=()=>ROLE==="admin"||ROLE==="manager";
+const amsg=(t,e)=>$("amsg").innerHTML=`<span class="${e?"err":"ok"}">${esc(t)}</span>`;
+async function boot(){
+  const {data:{session}}=await db.auth.getSession();
+  if(!session)return $("auth").style.display="flex";
+  const r=await db.from("profiles").select("*").eq("id",session.user.id).maybeSingle();
+  if(r.error||!r.data){await db.auth.signOut();$("auth").style.display="flex";return amsg("Profil topilmadi. Supabase'da schema_auth.sql bajarilganini tekshiring.",1)}
+  if(r.data.role==="pending"){await db.auth.signOut();$("auth").style.display="flex";return amsg("Hisobingiz yaratildi. Admin ruxsat bergach, qayta kiring.",1)}
+  ME=r.data;ROLE=ME.role;$("auth").style.display="none";
+  document.querySelectorAll("#nav button[data-p]").forEach(b=>b.hidden=!PAGES[ROLE].includes(b.dataset.p));
+  $("who").textContent=ME.email+" · "+RN[ROLE];
+  showPage("home");
+}
+$("aIn").onclick=async()=>{const {error}=await db.auth.signInWithPassword({email:$("aE").value.trim(),password:$("aP").value});error?amsg(error.message,1):boot()};
+$("aP").onkeydown=e=>{if(e.key==="Enter")$("aIn").click()};
+$("aUp").onclick=async()=>{
+  const {data,error}=await db.auth.signUp({email:$("aE").value.trim(),password:$("aP").value});
+  if(error)return amsg(error.message,1);
+  data.session?boot():amsg("Ro'yxatdan o'tdingiz. Emailga kelgan havolani tasdiqlang, so'ng kiring.");
+};
+$("out").onclick=async()=>{await db.auth.signOut();location.reload()};
+
+/* ---------- Foydalanuvchilar va audit (admin) ---------- */
+async function users(c){
+  const [u,a]=await Promise.all([db.from("profiles").select("*").order("created_at"),
+    db.from("audit_logs").select("*").order("id",{ascending:false}).limit(60)]);
+  if(u.error)return c.innerHTML='<span class="err">'+esc(u.error.message)+'</span>';
+  c.innerHTML=`<div class="panel"><h3>Foydalanuvchilar</h3><div class="wrap"><table class="t"><tr><th>Email</th><th>Rol</th></tr>${u.data.map(x=>
+   `<tr><td>${esc(x.email)}</td><td><select data-id="${x.id}" ${x.id===ME.id?"disabled":""}>${Object.entries(RN).map(([k,v])=>`<option value="${k}" ${x.role===k?"selected":""}>${v}</option>`).join("")}</select></td></tr>`).join("")}</table></div>
+   <p class="note">Yangi ro'yxatdan o'tganlar "Kutilmoqda" holatida bo'ladi — rol berilgach kira oladi.</p></div>
+   <div class="panel"><h3>O'zgarishlar tarixi (oxirgi 60)</h3><div class="wrap"><table class="t"><tr><th>Vaqt</th><th>Kim</th><th>Jadval</th><th>Amal</th><th>ID</th></tr>${(a.data||[]).map(x=>
+   `<tr><td>${esc(new Date(x.created_at).toLocaleString("uz"))}</td><td>${esc(x.user_email)}</td><td>${esc(x.table_name)}</td><td>${esc(x.action)}</td><td>${esc(x.row_id)}</td></tr>`).join("")}</table></div></div>`;
+  c.querySelectorAll("select[data-id]").forEach(sel=>sel.onchange=async()=>{
+    const {error}=await db.from("profiles").update({role:sel.value}).eq("id",sel.dataset.id);
+    error?alert(error.message):users(c);
+  });
+}
+
+/* ---------- Hisobotlar ---------- */
+async function reports(c){
+  const d=new Date(),first=new Date(d.getFullYear(),d.getMonth(),1).toLocaleDateString("en-CA");
+  c.innerHTML=`<div class="panel"><div class="grid"><div><label>Sanadan</label><input id="r_a" type="date" value="${first}"></div>
+   <div><label>Sanagacha</label><input id="r_b" type="date" value="${d.toLocaleDateString("en-CA")}"></div>
+   <div><label>Kesim</label><select id="r_g"><option value="day">Kunlar bo'yicha</option><option value="month">Oylar bo'yicha</option>
+   <option value="customer">Mijozlar bo'yicha</option><option value="product">Mahsulotlar bo'yicha</option><option value="city">Shahar / hudud bo'yicha</option></select></div></div>
+   <button class="btn p" id="r_go">Hisoblash</button><button class="btn" id="r_csv">⬇ CSV</button></div><div class="panel" id="r_out">Yuklanmoqda...</div>`;
+  const r=await db.from("shipments").select("*, shipment_items(*)").order("id",{ascending:false}).limit(5000);
+  if(r.error)return $("r_out").innerHTML='<span class="err">'+esc(r.error.message)+'</span>';
+  let lines=[];
+  const run=()=>{
+    const a=$("r_a").value,b=$("r_b").value,gb=$("r_g").value;
+    const inR=r.data.filter(x=>(!a||x.ship_date>=a)&&(!b||x.ship_date<=b));
+    const ok=inR.filter(x=>x.status==="confirmed"),bad=inR.filter(x=>x.status==="cancelled").length;
+    const m={};
+    ok.forEach(s=>s.shipment_items.forEach(i=>{
+      const k={day:s.ship_date,month:(s.ship_date||"").slice(0,7),customer:s.customer,city:s.city,product:i.product_name}[gb]||"—";
+      const e=m[k]??={docs:new Set(),qty:0,pal:0};e.docs.add(s.id);e.qty+=num(i.qty);e.pal+=num(i.pallets);
+    }));
+    const rows=Object.entries(m).sort((x,y)=>String(x[0]).localeCompare(String(y[0])));
+    lines=[["Kesim","Hujjatlar","Miqdor","Poddon"],...rows.map(([k,e])=>[k,e.docs.size,+e.qty.toFixed(3),e.pal])];
+    $("r_out").innerHTML=`<p><b>Tasdiqlangan hujjatlar: ${ok.length}</b> · Bekor qilingan: ${bad} · Jami miqdor: ${+ok.reduce((t,s)=>t+s.shipment_items.reduce((u,i)=>u+num(i.qty),0),0).toFixed(3)}</p>
+     <div class="wrap"><table class="t"><tr><th>${gb==="day"?"Sana":gb==="month"?"Oy":gb==="customer"?"Mijoz":gb==="city"?"Hudud":"Mahsulot"}</th><th>Hujjatlar</th><th>Miqdor</th><th>Poddon</th></tr>${lines.slice(1).map(l=>`<tr>${l.map(v=>`<td>${esc(v)}</td>`).join("")}</tr>`).join("")}</table></div>`;
+  };
+  $("r_go").onclick=run;run();
+  $("r_csv").onclick=()=>{const x=document.createElement("a");
+    x.href=URL.createObjectURL(new Blob(["\ufeff"+lines.map(l=>l.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(",")).join("\n")],{type:"text/csv"}));x.download="hisobot.csv";x.click()};
+}
+
+document.querySelectorAll("#nav button[data-p]").forEach(b=>b.onclick=()=>showPage(b.dataset.p));
+boot();
+</script>
+</body>
+</html>
