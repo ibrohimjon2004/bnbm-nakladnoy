@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>BNBM NAKLADNOY</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f4f7fb;
+            color: #172033;
+        }
+
+        header {
+            background: white;
+            border-bottom: 1px solid #e5e9f0;
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        header span {
+            color: #667085;
+        }
+
+        .layout {
+            display: flex;
+            min-height: calc(100vh - 73px);
+        }
+
+        .sidebar {
+            width: 240px;
+            background: white;
+            border-right: 1px solid #e5e9f0;
+            padding: 20px 14px;
+        }
+
+        .menu {
+            display: block;
+            width: 100%;
+            border: 0;
+            background: transparent;
+            padding: 14px;
+            margin-bottom: 6px;
+            text-align: left;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .menu:hover,
+        .menu.active {
+            background: #e8f1ff;
+        }
+
+        .content {
+            flex: 1;
+            padding: 30px;
+        }
+
+        .page-title h2 {
+            margin: 0 0 6px;
+            font-size: 28px;
+        }
+
+        .page-title p {
+            color: #667085;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 18px;
+            margin: 25px 0;
+        }
+
+        .card {
+            background: white;
+            padding: 22px;
+            border-radius: 14px;
+            border: 1px solid #e5e9f0;
+        }
+
+        .card-title {
+            color: #667085;
+            font-size: 14px;
+        }
+
+        .card-value {
+            font-size: 28px;
+            font-weight: bold;
+            margin-top: 8px;
+        }
+
+        .panel {
+            background: white;
+            border: 1px solid #e5e9f0;
+            border-radius: 14px;
+            padding: 25px;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            background: #eef5ff;
+        }
+
+        .error {
+            background: #fff0f0;
+            color: #b42318;
+        }
+
+        @media (max-width: 900px) {
+            .cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 650px) {
+            .layout {
+                display: block;
+            }
+
+            .sidebar {
+                width: 100%;
+            }
+
+            .content {
+                padding: 18px;
+            }
+
+            .cards {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>BNBM NAKLADNOY</h1>
+    <span>Yuk xatlarini boshqarish tizimi</span>
+</header>
+
+<div class="layout">
+
+    <aside class="sidebar">
+
+        <button class="menu active" onclick="showPage('home', this)">
+            🏠 Bosh sahifa
+        </button>
+
+        <button class="menu" onclick="showPage('shipments', this)">
+            🧾 Yangi nakladnoy
+        </button>
+
+        <button class="menu" onclick="showPage('warehouse', this)">
+            🏭 Bugungi ombor
+        </button>
+
+        <button class="menu" onclick="showPage('customers', this)">
+            🏢 Buyurtmachilar
+        </button>
+
+        <button class="menu" onclick="showPage('products', this)">
+            📦 Mahsulotlar
+        </button>
+
+        <button class="menu" onclick="showPage('vehicles', this)">
+            🚛 Mashinalar
+        </button>
+
+        <button class="menu" onclick="showPage('history', this)">
+            📚 Nakladnoy tarixi
+        </button>
+
+    </aside>
+
+    <main class="content">
+
+        <div class="page-title">
+            <h2 id="pageTitle">Bosh sahifa</h2>
+            <p id="pageDescription">
+                BNBM nakladnoy boshqaruv tizimi
+            </p>
+        </div>
+
+        <div id="pageContent">
+
+            <div class="cards">
+
+                <div class="card">
+                    <div class="card-title">Buyurtmachilar</div>
+                    <div class="card-value" id="customerCount">...</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Mahsulotlar</div>
+                    <div class="card-value" id="productCount">...</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Mashinalar</div>
+                    <div class="card-value" id="vehicleCount">...</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Ombor qoldig'i</div>
+                    <div class="card-value" id="warehouseCount">...</div>
+                </div>
+
+            </div>
+
+            <div class="panel">
+                <h3>Supabase ulanishi</h3>
+
+                <div id="connectionStatus" class="status">
+                    Bazaga ulanmoqda...
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+</div>
+
+<script>
+
+/* ============================================
+   SUPABASE SOZLAMALARI
+   ============================================ */
+
+const SUPABASE_URL =
+    "https://megijiehhzynvddpeexk.supabase.co";
+
+const SUPABASE_KEY =
+    "sb_publishable_fTxkT_gPRuZzk1Drnv1pCg_K0Isf9wM";
+
+const supabaseClient =
+    window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_KEY
+    );
+
+
+/* ============================================
+   BAZANI TEKSHIRISH
+   ============================================ */
+
+async function testConnection() {
+
+    const status =
+        document.getElementById("connectionStatus");
+
+    try {
+
+        const { data, error } =
+            await supabaseClient
+                .from("products")
+                .select("id")
+                .limit(1);
+
+        if (error) {
+            throw error;
+        }
+
+        status.innerHTML =
+            "✅ Supabase muvaffaqiyatli ulandi";
+
+        await loadDashboard();
+
+    } catch (error) {
+
+        console.error(error);
+
+        status.innerHTML =
+            "❌ Supabase ulanishida xato: " +
+            error.message;
+
+        status.classList.add("error");
+    }
+}
+
+
+/* ============================================
+   DASHBOARD MA'LUMOTLARI
+   ============================================ */
+
+async function loadDashboard() {
+
+    const customers =
+        await supabaseClient
+            .from("customers")
+            .select("id", { count: "exact", head: true });
+
+    const products =
+        await supabaseClient
+            .from("products")
+            .select("id", { count: "exact", head: true });
+
+    const vehicles =
+        await supabaseClient
+            .from("vehicles")
+            .select("id", { count: "exact", head: true });
+
+    const warehouse =
+        await supabaseClient
+            .from("warehouse_stock")
+            .select("available_racks");
+
+    document.getElementById("customerCount").innerText =
+        customers.count ?? 0;
+
+    document.getElementById("productCount").innerText =
+        products.count ?? 0;
+
+    document.getElementById("vehicleCount").innerText =
+        vehicles.count ?? 0;
+
+    let totalRacks = 0;
+
+    if (warehouse.data) {
+
+        warehouse.data.forEach(row => {
+
+            totalRacks +=
+                Number(row.available_racks || 0);
+
+        });
+
+    }
+
+    document.getElementById("warehouseCount").innerText =
+        totalRacks;
+}
+
+
+/* ============================================
+   SAHIFALAR
+   ============================================ */
+
+function showPage(page, button) {
+
+    document
+        .querySelectorAll(".menu")
+        .forEach(btn => btn.classList.remove("active"));
+
+    button.classList.add("active");
+
+    const title =
+        document.getElementById("pageTitle");
+
+    const description =
+        document.getElementById("pageDescription");
+
+    const content =
+        document.getElementById("pageContent");
+
+
+    if (page === "home") {
+
+        title.innerText = "Bosh sahifa";
+
+        description.innerText =
+            "BNBM nakladnoy boshqaruv tizimi";
+
+        content.innerHTML = `
+            <div class="panel">
+                <h3>🏠 Bosh sahifa</h3>
+                <p>
+                    Tizim Supabase bazasi bilan ishlayapti.
+                </p>
+            </div>
+        `;
+
+        loadDashboard();
+
+    }
+
+
+    else if (page === "shipments") {
+
+        title.innerText = "Yangi nakladnoy";
+
+        description.innerText =
+            "Yangi yuk xatini yaratish";
+
+        content.innerHTML = `
+            <div class="panel">
+                <h3>🧾 Yangi nakladnoy</h3>
+                <p>
+                    Bu bo‘limni keyingi bosqichda
+                    to‘liq funksional qilamiz.
+                </p>
+            </div>
+        `;
+
+    }
+
+
+    else if (page === "warehouse") {
+
+        title.innerText = "Bugungi ombor";
+
+        description.innerText =
+            "Ombordagi mahsulot va qoldiqlar";
+
+        content.innerHTML = `
+            <div class="panel">
+                <h3>🏭 Bugungi ombor</h3>
+                <p>
+                    Ombor ma'lumotlarini shu yerda
+                    ko‘rsatamiz.
+                </p>
+            </div>
+        `;
+
+    }
+
+
+    else if (page === "customers") {
+
+        title.innerText = "Buyurtmachilar";
+
+        description.innerText =
+            "Buyurtmachilar bazasi";
+
+        content.innerHTML = `
+            <div class="panel">
+                <h3>🏢 Buyurtmachilar</h3>
+                <p>
+                    Bazadagi firmalar shu yerda chiqadi.
+                </p>
+            </div>
+        `;
+
+    }
+
+
+    else if (page === "products") {
+
+        title.innerText = "Mahsulotlar";
+
+        description.innerText =
+            "BNBM mahsulotlari";
+
+        content.innerHTML = `
+            <div class="panel">
+                <h3>📦 Mahsulotlar</h3>
+                <p>
+                    47 ta mahsulot bazada mavjud.
+                </p>
+            </div>
+        `;
+
+    }
+
+
+    else if (page === "vehicles") {
+
+        title.innerText = "Mashinalar";
+
+        description.innerText =
+            "Transport vositalari";
+
+        content.innerHTML = `
+            <div class="panel">
+                <h3>🚛 Mashinalar</h3>
+                <p>
+                    Mashinalar bazasi shu yerda.
+                </p>
+            </div>
+        `;
+
+    }
+
+
+    else if (page === "history") {
+
+        title.innerText = "Nakladnoy tarixi";
+
+        description.innerText =
+            "Oldingi yuk xatlari";
+
+        content.innerHTML = `
+            <div class="panel">
+                <h3>📚 Nakladnoy tarixi</h3>
+                <p>
+                    Yaratilgan nakladnoylar shu yerda
+                    saqlanadi.
+                </p>
+            </div>
+        `;
+
+    }
+}
+
+
+/* ============================================
+   START
+   ============================================ */
+
+testConnection();
+
+</script>
+
+</body>
+</html>
